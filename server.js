@@ -20,7 +20,7 @@ app.get('/:query', async (req, res) => {
         client_id: unsplashApiKey,
       },
     });
-    res.json(response.data.results[random].urls.regular);
+    res.redirect(response.data.results[random].urls.regular);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch images' });
