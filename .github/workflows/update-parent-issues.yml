@@ -32,16 +32,21 @@ jobs:
           ISSUE_NUMBER=${{ github.event.issue.number }}
           REPO=${{ github.repository }}
 
-          # Fetch the issue title and the first 100 characters of the body for a brief summary
+          # Fetch the issue title and the body for processing
           TITLE=$(gh issue view $ISSUE_NUMBER --json title -q .title)
-          SUMMARY=$(gh issue view $ISSUE_NUMBER --json body -q .body | head -c 100)
+          BODY=$(gh issue view $ISSUE_NUMBER --json body -q .body)
+
+          # Remove the "Parents:" line from the body
+          CLEANED_BODY=$(echo "$BODY" | sed '/^Parents:/d')
+
+          # Extract the first 100 characters of the cleaned body for a brief summary
+          SUMMARY=$(echo "$CLEANED_BODY" | head -c 100)
 
           # Remove any line breaks or quotes from the summary
           SUMMARY=$(echo "$SUMMARY" | tr -d '\n' | tr -d '"')
 
-          # Find the "Parents" line in the description
-          DESCRIPTION=$(gh issue view $ISSUE_NUMBER --json body -q .body)
-          PARENTS_LINE=$(echo "$DESCRIPTION" | grep -oP 'Parents:\s*#[0-9, ]+')
+          # Find the "Parents" line in the original body
+          PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parents:\s*#[0-9, ]+')
           if [ -z "$PARENTS_LINE" ]; then
             echo "No Parents found, exiting."
             exit 0
