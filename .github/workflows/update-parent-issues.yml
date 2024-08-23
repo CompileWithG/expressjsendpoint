@@ -49,8 +49,8 @@ jobs:
           # Loop through each parent and update its description
           for PARENT_ID in $PARENT_IDS; do
             # Get top 5 busiest child issues
-            CHILD_ISSUES=$(gh issue list --repo $REPO --search "Parents: #$PARENT_ID" --json number,comments,title,html_url --jq 'sort_by(.comments) | reverse | .[:5]')
-            TOP_ISSUES=$(echo "$CHILD_ISSUES" | jq -r '.[] | "- [#" + (.number|tostring) + "](" + .html_url + ") - " + .title + " (" + (.comments|tostring) + " comments)"')
+            CHILD_ISSUES=$(gh issue list --repo $REPO --search "Parents: #$PARENT_ID" --json number,comments,title,url --jq 'sort_by(.comments) | reverse | .[:5]')
+            TOP_ISSUES=$(echo "$CHILD_ISSUES" | jq -r '.[] | "- [#" + (.number|tostring) + "](" + .url + ") - " + .title + " (" + (.comments|tostring) + " comments)"')
 
             # Fetch the current description of the parent issue
             PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body --jq '.body')
@@ -67,5 +67,5 @@ jobs:
             # Update the parent issue description
             gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
           done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+     
+
