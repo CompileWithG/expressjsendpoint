@@ -12,6 +12,7 @@ permissions:
 jobs:
   update-parent-issues:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -47,14 +48,24 @@ jobs:
 
           # Loop through each parent and update its description
           for PARENT_ID in $PARENT_IDS; do
-            PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
-            NEW_ENTRY="Child: #$ISSUE_NUMBER - $DESCRIPTION"
+            # Get top 5 busiest child issues
+            CHILD_ISSUES=$(gh issue list --repo $REPO --search "Parents: #$PARENT_ID" --json number,comments,title,html_url --jq 'sort_by(.comments) | reverse | .[:5]')
+            TOP_ISSUES=$(echo "$CHILD_ISSUES" | jq -r '.[] | "- [#" + (.number|tostring) + "](" + .html_url + ") - " + .title + " (" + (.comments|tostring) + " comments)"')
 
-            # Append the new entry if it's not already there
-            if ! echo "$PARENT_DESCRIPTION" | grep -q "$NEW_ENTRY"; then
-              UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n$NEW_ENTRY"
-              gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
+            # Fetch the current description of the parent issue
+            PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body --jq '.body')
+
+            # Check if delimiters exist
+            if echo "$PARENT_DESCRIPTION" | grep -q "<!-- TOP_5_CHILD_ISSUES_START -->"; then
+              # Replace existing block between delimiters
+              UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed -e "/<!-- TOP_5_CHILD_ISSUES_START -->/,/<!-- TOP_5_CHILD_ISSUES_END -->/c\\<!-- TOP_5_CHILD_ISSUES_START -->\n$TOP_ISSUES\n<!-- TOP_5_CHILD_ISSUES_END -->")
+            else
+              # Append new block if delimiters do not exist
+              UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n<!-- TOP_5_CHILD_ISSUES_START -->\n$TOP_ISSUES\n<!-- TOP_5_CHILD_ISSUES_END -->"
             fi
+
+            # Update the parent issue description
+            gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
