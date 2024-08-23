@@ -50,13 +50,15 @@ jobs:
           for PARENT_ID in $PARENT_IDS; do
             # Get top 5 busiest child issues
             CHILD_ISSUES=$(gh issue list --repo $REPO --search "Parents: #$PARENT_ID" --json number,comments,title,url --jq 'sort_by(.comments) | reverse | .[:5]')
-            TOP_ISSUES=$(echo "$CHILD_ISSUES" | jq -r '.[] | "- [#" + (.number|tostring) + "](" + .url + ") - " + .title + " (" + (.comments|tostring) + " comments)"')
+
+            # Format the block of the top 5 busiest child issues
+            TOP_ISSUES_BLOCK=$(echo "$CHILD_ISSUES" | jq -r '.[] | "- [#" + (.number|tostring) + "](" + .url + ") - " + .title + " (" + (.comments|tostring) + " comments)"')
 
             # Fetch the current description of the parent issue
             PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body --jq '.body')
 
-            # Format the block of the top 5 busiest child issues
-            TOP_ISSUES_BLOCK=$(printf "## Top 5 Busiest Child Issues\n<!-- TOP_5_CHILD_ISSUES_START -->\n%s\n<!-- TOP_5_CHILD_ISSUES_END -->" "$TOP_ISSUES")
+            # Create the block with the busiest child issues
+            TOP_ISSUES_BLOCK=$(printf "## Top 5 Busiest Child Issues\n<!-- TOP_5_CHILD_ISSUES_START -->\n%s\n<!-- TOP_5_CHILD_ISSUES_END -->" "$TOP_ISSUES_BLOCK")
 
             # Check if delimiters exist
             if echo "$PARENT_DESCRIPTION" | grep -q "<!-- TOP_5_CHILD_ISSUES_START -->"; then
@@ -72,3 +74,4 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
