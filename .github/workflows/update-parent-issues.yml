@@ -48,10 +48,10 @@ jobs:
 
           # Loop through each parent and update its description
           for PARENT_ID in $PARENT_IDS; do
-            # Get top 5 busiest child issues and format as a list
-            TOP_ISSUES=$(gh issue list --repo $REPO --search "Parents: #$PARENT_ID" --json number,comments,title,url | jq -r '.[] | "- [#" + (.number|tostring) + "](" + .url + ") - " + .title + " (" + (.comments|tostring) + " comments)"' | head -n 5 | tr '\n' '\n')
+            # Get top 5 busiest child issues and format as a plain text list
+            TOP_ISSUES=$(gh issue list --repo $REPO --search "Parents: #$PARENT_ID" --json number,comments,title,url | jq -r '.[] | "- Issue #" + (.number|tostring) + ": " + .title + " (" + (.comments|tostring) + " comments) - " + .url' | head -n 5 | tr '\n' '\n')
 
-            # Create the block with the busiest child issues
+            # Create the block with the busiest child issues in plain text
             TOP_ISSUES_BLOCK="## Top 5 Busiest Child Issues\n\n<!-- TOP_5_CHILD_ISSUES_START -->\n$TOP_ISSUES\n<!-- TOP_5_CHILD_ISSUES_END -->"
 
             # Fetch the current description of the parent issue
