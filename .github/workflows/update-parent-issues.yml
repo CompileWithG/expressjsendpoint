@@ -1,5 +1,3 @@
-name: Update Parent Issues on Comment
-
 on:
   issue_comment:
     types: [created]
@@ -12,7 +10,6 @@ permissions:
 jobs:
   update-parent-issues:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -26,7 +23,7 @@ jobs:
         run: sudo apt-get install gh -y
 
       - name: Authenticate with GitHub CLI
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+        run: gh auth login --with-token <<< ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update Parent Issues
         run: |
@@ -48,26 +45,14 @@ jobs:
 
           # Loop through each parent and update its description
           for PARENT_ID in $PARENT_IDS; do
-            # Get top 5 busiest child issues and format as a plain text list
-            TOP_ISSUES=$(gh issue list --repo $REPO --search "Parents: #$PARENT_ID" --json number,comments,title,url | jq -r '.[] | "- Issue #" + (.number|tostring) + ": " + .title + " (" + (.comments|tostring) + " comments) - " + .url' | head -n 5 | tr '\n' '\n')
-
-            # Create the block with the busiest child issues in plain text
-            TOP_ISSUES_BLOCK="## Top 5 Busiest Child Issues\n\n<!-- TOP_5_CHILD_ISSUES_START -->\n$TOP_ISSUES\n<!-- TOP_5_CHILD_ISSUES_END -->"
-
-            # Fetch the current description of the parent issue
             PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
+            NEW_ENTRY="Child: #$ISSUE_NUMBER - $DESCRIPTION"
 
-            # Check if delimiters exist
-            if echo "$PARENT_DESCRIPTION" | grep -q "<!-- TOP_5_CHILD_ISSUES_START -->"; then
-              # Replace existing block between delimiters
-              UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed "/<!-- TOP_5_CHILD_ISSUES_START -->/,/<!-- TOP_5_CHILD_ISSUES_END -->/c $TOP_ISSUES_BLOCK")
-            else
-              # Append new block if delimiters do not exist
-              UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n$TOP_ISSUES_BLOCK"
+            # Append the new entry if it's not already there
+            if ! echo "$PARENT_DESCRIPTION" | grep -q "$NEW_ENTRY"; then
+              UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n$NEW_ENTRY"
+              gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
             fi
-
-            # Update the parent issue description
-            gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
