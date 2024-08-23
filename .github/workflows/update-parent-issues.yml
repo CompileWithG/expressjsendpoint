@@ -26,7 +26,7 @@ jobs:
         run: sudo apt-get install gh -y
 
       - name: Authenticate with GitHub CLI
-        run: gh auth login --with-token <<< ${{ secrets.GITHUB_TOKEN }}
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
 
       - name: Update Parent Issues
         run: |
@@ -48,22 +48,19 @@ jobs:
 
           # Loop through each parent and update its description
           for PARENT_ID in $PARENT_IDS; do
-            # Get top 5 busiest child issues
-            CHILD_ISSUES=$(gh issue list --repo $REPO --search "Parents: #$PARENT_ID" --json number,comments,title,url --jq 'sort_by(.comments) | reverse | .[:5]')
-
-            # Format the block of the top 5 busiest child issues
-            TOP_ISSUES_BLOCK=$(echo "$CHILD_ISSUES" | jq -r '.[] | "- [#" + (.number|tostring) + "](" + .url + ") - " + .title + " (" + (.comments|tostring) + " comments)"')
-
-            # Fetch the current description of the parent issue
-            PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body --jq '.body')
+            # Get top 5 busiest child issues and format as a list
+            TOP_ISSUES=$(gh issue list --repo $REPO --search "Parents: #$PARENT_ID" --json number,comments,title,url --jq '.[] | "- [#" + (.number|tostring) + "](" + .url + ") - " + .title + " (" + (.comments|tostring) + " comments)"' | head -n 5 | tr '\n' '\n')
 
             # Create the block with the busiest child issues
-            TOP_ISSUES_BLOCK=$(printf "## Top 5 Busiest Child Issues\n<!-- TOP_5_CHILD_ISSUES_START -->\n%s\n<!-- TOP_5_CHILD_ISSUES_END -->" "$TOP_ISSUES_BLOCK")
+            TOP_ISSUES_BLOCK="## Top 5 Busiest Child Issues\n<!-- TOP_5_CHILD_ISSUES_START -->\n$TOP_ISSUES\n<!-- TOP_5_CHILD_ISSUES_END -->"
+
+            # Fetch the current description of the parent issue
+            PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
 
             # Check if delimiters exist
             if echo "$PARENT_DESCRIPTION" | grep -q "<!-- TOP_5_CHILD_ISSUES_START -->"; then
-              # Replace existing block between delimiters using | as delimiter
-              UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed -e "s|<!-- TOP_5_CHILD_ISSUES_START -->.*<!-- TOP_5_CHILD_ISSUES_END -->|$TOP_ISSUES_BLOCK|s")
+              # Replace existing block between delimiters
+              UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed -e "/<!-- TOP_5_CHILD_ISSUES_START -->/,/<!-- TOP_5_CHILD_ISSUES_END -->/c $TOP_ISSUES_BLOCK")
             else
               # Append new block if delimiters do not exist
               UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n$TOP_ISSUES_BLOCK"
@@ -74,4 +71,3 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
