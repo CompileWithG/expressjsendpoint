@@ -12,7 +12,6 @@ permissions:
 jobs:
   update-parent-issues:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -26,22 +25,22 @@ jobs:
         run: sudo apt-get install gh -y
 
       - name: Authenticate with GitHub CLI
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+        run: gh auth login --with-token <<< ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update Parent Issues
         run: |
           ISSUE_NUMBER=${{ github.event.issue.number }}
           REPO=${{ github.repository }}
 
-          # Fetch the issue title and URL for a brief description
-          ISSUE_TITLE=$(gh issue view $ISSUE_NUMBER --json title -q .title)
-          ISSUE_URL=$(gh issue view $ISSUE_NUMBER --json url -q .url)
-          BRIEF_DESCRIPTION="Child: #$ISSUE_NUMBER - $ISSUE_TITLE ($ISSUE_URL)"
+          # Fetch the issue title and the first 100 characters of the body for a brief summary
+          TITLE=$(gh issue view $ISSUE_NUMBER --json title -q .title)
+          SUMMARY=$(gh issue view $ISSUE_NUMBER --json body -q .body | head -c 100)
 
-          # Fetch the issue description
-          DESCRIPTION=$(gh issue view $ISSUE_NUMBER --json body -q .body)
+          # Remove any line breaks or quotes from the summary
+          SUMMARY=$(echo "$SUMMARY" | tr -d '\n' | tr -d '"')
 
           # Find the "Parents" line in the description
+          DESCRIPTION=$(gh issue view $ISSUE_NUMBER --json body -q .body)
           PARENTS_LINE=$(echo "$DESCRIPTION" | grep -oP 'Parents:\s*#[0-9, ]+')
           if [ -z "$PARENTS_LINE" ]; then
             echo "No Parents found, exiting."
@@ -54,10 +53,11 @@ jobs:
           # Loop through each parent and update its description
           for PARENT_ID in $PARENT_IDS; do
             PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
+            NEW_ENTRY="Child: #$ISSUE_NUMBER - $TITLE - $SUMMARY..."
 
-            # Append the brief description if it's not already there
-            if ! echo "$PARENT_DESCRIPTION" | grep -q "$BRIEF_DESCRIPTION"; then
-              UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n$BRIEF_DESCRIPTION"
+            # Append the new entry if it's not already there
+            if ! echo "$PARENT_DESCRIPTION" | grep -q "$NEW_ENTRY"; then
+              UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n$NEW_ENTRY"
               gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
             fi
           done
