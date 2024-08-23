@@ -4,6 +4,11 @@ on:
   issue_comment:
     types: [created]
 
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+
 jobs:
   update-parent-issues:
     runs-on: ubuntu-latest
@@ -14,7 +19,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '20'  # Specify Node.js 20
+          node-version: '20'
 
       - name: Install GitHub CLI
         run: sudo apt-get install gh -y
@@ -53,4 +58,3 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
