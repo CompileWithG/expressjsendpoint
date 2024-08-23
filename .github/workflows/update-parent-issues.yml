@@ -1,3 +1,5 @@
+name: Update Parent Issues on Comment
+
 on:
   issue_comment:
     types: [created]
@@ -10,6 +12,7 @@ permissions:
 jobs:
   update-parent-issues:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -23,12 +26,17 @@ jobs:
         run: sudo apt-get install gh -y
 
       - name: Authenticate with GitHub CLI
-        run: gh auth login --with-token <<< ${{ secrets.GITHUB_TOKEN }}
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
 
       - name: Update Parent Issues
         run: |
           ISSUE_NUMBER=${{ github.event.issue.number }}
           REPO=${{ github.repository }}
+
+          # Fetch the issue title and URL for a brief description
+          ISSUE_TITLE=$(gh issue view $ISSUE_NUMBER --json title -q .title)
+          ISSUE_URL=$(gh issue view $ISSUE_NUMBER --json url -q .url)
+          BRIEF_DESCRIPTION="Child: #$ISSUE_NUMBER - $ISSUE_TITLE ($ISSUE_URL)"
 
           # Fetch the issue description
           DESCRIPTION=$(gh issue view $ISSUE_NUMBER --json body -q .body)
@@ -46,13 +54,13 @@ jobs:
           # Loop through each parent and update its description
           for PARENT_ID in $PARENT_IDS; do
             PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
-            NEW_ENTRY="Child: #$ISSUE_NUMBER - $DESCRIPTION"
 
-            # Append the new entry if it's not already there
-            if ! echo "$PARENT_DESCRIPTION" | grep -q "$NEW_ENTRY"; then
-              UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n$NEW_ENTRY"
+            # Append the brief description if it's not already there
+            if ! echo "$PARENT_DESCRIPTION" | grep -q "$BRIEF_DESCRIPTION"; then
+              UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n$BRIEF_DESCRIPTION"
               gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
             fi
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
