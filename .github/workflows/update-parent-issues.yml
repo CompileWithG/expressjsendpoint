@@ -57,7 +57,8 @@ jobs:
 
             # Append the new entry if it's not already there
             if ! echo "$PARENT_DESCRIPTION" | grep -q "$NEW_ENTRY"; then
-              UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n$NEW_ENTRY"
+              UPDATED_DESCRIPTION="${PARENT_DESCRIPTION}\n$NEW_ENTRY"
+              UPDATED_DESCRIPTION=$(echo "$UPDATED_DESCRIPTION" | sed 's/\\n$//') # Remove trailing newline
               gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
             fi
           done
