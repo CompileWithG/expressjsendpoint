@@ -55,17 +55,21 @@ jobs:
             # Fetch the current description of the parent issue
             PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body --jq '.body')
 
+            # Format the block of the top 5 busiest child issues
+            TOP_ISSUES_BLOCK=$(printf "## Top 5 Busiest Child Issues\n<!-- TOP_5_CHILD_ISSUES_START -->\n%s\n<!-- TOP_5_CHILD_ISSUES_END -->" "$TOP_ISSUES")
+
             # Check if delimiters exist
             if echo "$PARENT_DESCRIPTION" | grep -q "<!-- TOP_5_CHILD_ISSUES_START -->"; then
               # Replace existing block between delimiters
-              UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed -e "/<!-- TOP_5_CHILD_ISSUES_START -->/,/<!-- TOP_5_CHILD_ISSUES_END -->/c\\<!-- TOP_5_CHILD_ISSUES_START -->\n$TOP_ISSUES\n<!-- TOP_5_CHILD_ISSUES_END -->")
+              UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed -e "/<!-- TOP_5_CHILD_ISSUES_START -->/,/<!-- TOP_5_CHILD_ISSUES_END -->/c\\$TOP_ISSUES_BLOCK")
             else
               # Append new block if delimiters do not exist
-              UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n<!-- TOP_5_CHILD_ISSUES_START -->\n$TOP_ISSUES\n<!-- TOP_5_CHILD_ISSUES_END -->"
+              UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n$TOP_ISSUES_BLOCK"
             fi
 
             # Update the parent issue description
             gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
           done
-     
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
