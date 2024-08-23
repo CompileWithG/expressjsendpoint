@@ -1,0 +1,55 @@
+name: Update Parent Issues on Comment
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  update-parent-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up GitHub CLI
+        uses: actions/setup-node@v3
+        with:
+          node-version: '14'
+
+      - name: Install GitHub CLI
+        run: sudo apt-get install gh -y
+
+      - name: Authenticate with GitHub CLI
+        run: gh auth login --with-token <<< ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Parent Issues
+        run: |
+          ISSUE_NUMBER=${{ github.event.issue.number }}
+          REPO=${{ github.repository }}
+
+          # Fetch the issue description
+          DESCRIPTION=$(gh issue view $ISSUE_NUMBER --json body -q .body)
+
+          # Find the "Parents" line in the description
+          PARENTS_LINE=$(echo "$DESCRIPTION" | grep -oP 'Parents:\s*#[0-9, ]+')
+          if [ -z "$PARENTS_LINE" ]; then
+            echo "No Parents found, exiting."
+            exit 0
+          fi
+
+          # Extract parent issue numbers
+          PARENT_IDS=$(echo "$PARENTS_LINE" | grep -oP '#\d+' | grep -oP '\d+')
+
+          # Loop through each parent and update its description
+          for PARENT_ID in $PARENT_IDS; do
+            PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
+            NEW_ENTRY="Child: #$ISSUE_NUMBER - $DESCRIPTION"
+
+            # Append the new entry if it's not already there
+            if ! echo "$PARENT_DESCRIPTION" | grep -q "$NEW_ENTRY"; then
+              UPDATED_DESCRIPTION="$PARENT_DESCRIPTION\n\n$NEW_ENTRY"
+              gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
+            fi
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
