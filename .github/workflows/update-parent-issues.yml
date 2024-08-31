@@ -19,54 +19,74 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: "20"
 
-      - name: Install GitHub CLI
-        run: sudo apt-get install gh -y
+      - name: Install GitHub CLI and jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh jq
 
       - name: Authenticate with GitHub CLI
         run: gh auth login --with-token <<< ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update Parent Issues
         run: |
+          set -e
+
           ISSUE_NUMBER=${{ github.event.issue.number }}
           REPO=${{ github.repository }}
 
-          # Fetch the issue title and the body for processing
-          TITLE=$(gh issue view $ISSUE_NUMBER --json title -q .title)
+          echo "Fetching issue body for issue #$ISSUE_NUMBER"
           BODY=$(gh issue view $ISSUE_NUMBER --json body -q .body)
+          echo "Issue body: $BODY"
 
-          # Remove the "Parents:" line from the body
-          CLEANED_BODY=$(echo "$BODY" | sed '/^Parents:/d')
-
-          # Extract the first 100 characters of the cleaned body for a brief summary
-          SUMMARY=$(echo "$CLEANED_BODY" | head -c 100)
-
-          # Remove any line breaks or quotes from the summary
-          SUMMARY=$(echo "$SUMMARY" | tr -d '\n' | tr -d '"')
-
-          # Find the "Parents" line in the original body
+          echo "Extracting parent issues"
           PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parents:\s*#[0-9, ]+')
+          echo "Parents line: $PARENTS_LINE"
+
           if [ -z "$PARENTS_LINE" ]; then
-            echo "No Parents found, exiting."
+            echo "No Parents found for #$ISSUE_NUMBER, exiting."
             exit 0
           fi
 
-          # Extract parent issue numbers
           PARENT_IDS=$(echo "$PARENTS_LINE" | grep -oP '#\d+' | grep -oP '\d+')
+          echo "Parent IDs: $PARENT_IDS"
 
-          # Loop through each parent and update its description
           for PARENT_ID in $PARENT_IDS; do
-            PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
-            NEW_ENTRY="Child: #$ISSUE_NUMBER - $TITLE - $SUMMARY..."
+            echo "Processing parent #$PARENT_ID"
 
-            # Append the new entry if it's not already there
-            if ! echo "$PARENT_DESCRIPTION" | grep -q "$NEW_ENTRY"; then
-              UPDATED_DESCRIPTION="${PARENT_DESCRIPTION}\n$NEW_ENTRY"
-              UPDATED_DESCRIPTION=$(echo "$UPDATED_DESCRIPTION" | sed 's/\\n$//') # Remove trailing newline
-              gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
+            PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
+            echo "Parent issue description: $PARENT_DESCRIPTION"
+
+            # Clear out old Children list if it exists
+            UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed '/^Children:/,/^$/d')
+            echo "Updated description after clearing Children: $UPDATED_DESCRIPTION"
+
+            # Fetch all child issues related to the current parent
+            CHILD_ISSUES=$(gh issue list --repo $REPO --json number,body | jq --arg parent_id "#$PARENT_ID" '
+              .[] | select(.body | contains($parent_id)) | .number
+            ')
+            echo "Raw child issues: $CHILD_ISSUES"
+
+            if [ -z "$CHILD_ISSUES" ]; then
+              echo "No child issues found for parent #$PARENT_ID."
+              continue
             fi
+
+            # Format child issues into a simple comma-separated list
+            CHILDREN_LIST=$(echo "$CHILD_ISSUES" | jq -r 'sort | map("#" + tostring) | join(", ")')
+            CHILDREN_LINE="Child Issues: $CHILDREN_LIST"
+            
+            echo "Formatted children line: $CHILDREN_LINE"
+
+            # Combine children line with updated description
+            FINAL_DESCRIPTION=$(echo -e "$CHILDREN_LINE\n\n$UPDATED_DESCRIPTION")
+            echo "Final description: $FINAL_DESCRIPTION"
+
+            # Update the parent issue with the new description
+            gh issue edit $PARENT_ID --body "$FINAL_DESCRIPTION"
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
