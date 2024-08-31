@@ -73,9 +73,9 @@ jobs:
               continue
             fi
 
-            # Format child issues into a simple comma-separated list
-            CHILDREN_LIST=$(echo "$CHILD_ISSUES" | jq -r 'sort | map("#" + tostring) | join(", ")')
-            CHILDREN_LINE="Child Issues: $CHILDREN_LIST"
+            # Convert CHILD_ISSUES into a proper JSON array for sorting
+            CHILD_ISSUES_ARRAY=$(echo "$CHILD_ISSUES" | jq -s 'sort | map("#" + tostring) | join(", ")')
+            CHILDREN_LINE="Child Issues: $CHILD_ISSUES_ARRAY"
             
             echo "Formatted children line: $CHILDREN_LINE"
 
@@ -88,5 +88,4 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 
