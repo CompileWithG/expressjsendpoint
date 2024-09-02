@@ -92,6 +92,7 @@ jobs:
 
             # Fetch the current description of the parent issue
             PARENT_DESCRIPTION=$(gh issue view "$PARENT_ID" --json body -q .body)
+            echo "Current parent description: $PARENT_DESCRIPTION"
 
             # Remove any existing Child line from the description
             UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed '/^Child:/d')
@@ -106,5 +107,6 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
 
