@@ -41,15 +41,24 @@ jobs:
           echo "Issue body: $BODY"
 
           echo "Extracting parent issues"
-          PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parent:\s*#[0-9, ]+')
+          # Adjusting the regular expression to correctly match "Parents:#<numbers>"
+          PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parents:\s*#[0-9, ]+')
+          
+          if [ -z "$PARENTS_LINE" ]; then
+            echo "No Parents found in the issue body for #$ISSUE_NUMBER, exiting."
+            exit 1
+          fi
+          
           echo "Parents line: $PARENTS_LINE"
 
-          if [ -z "$PARENTS_LINE" ]; then
-            echo "No Parent found for #$ISSUE_NUMBER, exiting."
-            exit 0
+          # Extracting the parent IDs
+          PARENT_IDS=$(echo "$PARENTS_LINE" | grep -oP '#\d+' | grep -oP '\d+')
+          
+          if [ -z "$PARENT_IDS" ]; then
+            echo "No valid parent IDs found in the line: $PARENTS_LINE"
+            exit 1
           fi
 
-          PARENT_IDS=$(echo "$PARENTS_LINE" | grep -oP '#\d+' | grep -oP '\d+')
           echo "Parent IDs: $PARENT_IDS"
 
           for PARENT_ID in $PARENT_IDS; do
@@ -60,7 +69,7 @@ jobs:
 
             # Fetch all child issues related to the current parent
             CHILD_ISSUES=$(gh issue list --repo $REPO --json number,body,comments | jq --arg parent_id "#$PARENT_ID" '
-              .[] | select(.body | contains("Parent: " + $parent_id)) | {
+              .[] | select(.body | contains("Parents: " + $parent_id)) | {
                 number: .number,
                 comments: .comments
               }
@@ -72,7 +81,7 @@ jobs:
               continue
             fi
 
-            # Extract top 5 most commented (busiest) child issues
+            # Extract the top 5 most commented (busiest) child issues
             BUSIEST_CHILDREN=$(echo "$CHILD_ISSUES" | jq -r '
               sort_by(-.comments) | .[] | "#\(.number)"
             ' | head -n 5 | tr '\n' ',' | sed 's/,$//')
@@ -88,4 +97,3 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
