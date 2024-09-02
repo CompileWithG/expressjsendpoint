@@ -12,13 +12,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up GitHub CLI
-        uses: nearform/github-action-gh-install@v1
-        with:
-          version: latest
-
       - name: Configure GitHub CLI
-        run: gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
 
       - name: Fetch issue details and update parent issues
         run: |
@@ -84,16 +79,5 @@ jobs:
             # Sort the child issues by comment count in descending order and pick the top 5
             sorted_issues=$(printf "%s\n" "${child_issues[@]}" | jq -s 'sort_by(-.comments)[:5]')
 
-            # Build the updated Children array for the parent description
-            children_array=$(build_child_array "${sorted_issues[@]}")
-            echo "Children array: $children_array"
-
-            # Append the children array to the updated description
-            updated_description+="\n\n$children_array"
-
-            # Update the parent issue description
-            update_parent_issue "$parent_id" "$updated_description"
-          done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            # Build the updated Children array for the
 
