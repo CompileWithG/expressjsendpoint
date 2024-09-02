@@ -79,26 +79,24 @@ jobs:
             echo "Raw child issues: $CHILD_ISSUES"
 
             # Extract the top 5 busiest child issues based on comment count
-            BUSIEST_CHILDREN=$(echo "$CHILD_ISSUES" | jq -r 'sort_by(-.comments) | .[:5] | .[] | "#\(.number)"' | paste -sd "," -)
+            BUSIEST_CHILDREN=$(echo "$CHILD_ISSUES" | jq -r '
+              sort_by(-.comments) | .[:5] | .[] | "#\(.number)"
+            ' | paste -sd "," -)
+
+            if [ -z "$BUSIEST_CHILDREN" ]; then
+              echo "No busy children found for parent #$PARENT_ID."
+              continue
+            fi
 
             echo "Busiest children: $BUSIEST_CHILDREN"
 
             # Fetch the current description of the parent issue
             PARENT_DESCRIPTION=$(gh issue view "$PARENT_ID" --json body -q .body)
 
-            if [ -z "$PARENT_DESCRIPTION" ]; then
-              echo "No description found for parent #$PARENT_ID."
-              continue
-            fi
-
-            echo "Current parent description: $PARENT_DESCRIPTION"
-
             # Remove any existing Child line from the description
             UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed '/^Child:/d')
 
-            echo "Updated description after clearing existing Child line: $UPDATED_DESCRIPTION"
-
-            # Append the new Child line
+            # Always add the Child line, even if description is empty
             FINAL_DESCRIPTION=$(echo -e "Child: $BUSIEST_CHILDREN\n$UPDATED_DESCRIPTION")
 
             echo "Final parent description: $FINAL_DESCRIPTION"
@@ -108,4 +106,5 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
