@@ -42,54 +42,5 @@ jobs:
 
           echo "Extracting parent issues"
           PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parents:\s*#[0-9, ]+')
-          echo "Parents line: $PARENTS_LINE"
+          echo "Pa
 
-          if [ -z "$PARENTS_LINE" ]; then
-            echo "No Parents found for #$ISSUE_NUMBER, exiting."
-            exit 0
-          fi
-
-          PARENT_IDS=$(echo "$PARENTS_LINE" | grep -oP '#\d+' | grep -oP '\d+')
-          echo "Parent IDs: $PARENT_IDS"
-
-          for PARENT_ID in $PARENT_IDS; do
-            echo "Processing parent #$PARENT_ID"
-
-            PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
-            echo "Parent issue description: $PARENT_DESCRIPTION"
-
-            # Clear out old Children list if it exists
-            UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed '/^Children:/,/^$/d')
-            echo "Updated description after clearing Children: $UPDATED_DESCRIPTION"
-
-            # Fetch all child issues related to the current parent
-            CHILD_ISSUES=$(gh issue list --repo $REPO --json number,title,comments,body --jq '
-              .[] | select(.body | contains("Parents:#'"$PARENT_ID"'")) | {
-                number: .number,
-                title: .title,
-                comments: .comments
-              }
-            ')
-            
-            echo "Raw child issues: $CHILD_ISSUES"
-
-            if [ -z "$CHILD_ISSUES" ]; then
-              echo "No child issues found for parent #$PARENT_ID."
-              continue
-            fi
-
-            # Sort child issues by comment count and pick top 5
-            CHILDREN_LIST=$(echo "$CHILD_ISSUES" | jq -r '
-              sort_by(-.comments) | .[] | "- [" + .title + "](https://github.com/'$REPO'/issues/" + (.number|tostring) + ")"
-            ' | head -n 5 | tr '\n' '\n')
-
-            echo "Formatted children list: $CHILDREN_LIST"
-
-            FINAL_DESCRIPTION=$(echo -e "Children:\n$CHILDREN_LIST\n\n$UPDATED_DESCRIPTION")
-            echo "Final description: $FINAL_DESCRIPTION"
-
-            # Update the parent issue with the new description
-            gh issue edit $PARENT_ID --body "$FINAL_DESCRIPTION"
-          done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
