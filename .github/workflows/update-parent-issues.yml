@@ -1,106 +1,98 @@
-name: Update Parent Issues on Comment
+name: Update Parent Issues
 
 on:
   issue_comment:
     types: [created]
 
-permissions:
-  issues: write
-  pull-requests: read
-  contents: read
-
 jobs:
   update-parent-issues:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - name: Set up GitHub CLI
+        uses: nearform/github-action-gh-install@v1
         with:
-          node-version: "20"
+          version: latest
 
-      - name: Install GitHub CLI and jq
+      - name: Configure GitHub CLI
+        run: gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Fetch issue details and update parent issues
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gh jq
+          # Get issue number from event payload
+          issue_number=$(jq -r .issue.number "$GITHUB_EVENT_PATH")
 
-      - name: Authenticate with GitHub CLI
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+          # Fetch issue body for the triggered issue
+          issue_body=$(gh issue view "$issue_number" --json body --jq '.body')
+          echo "Issue body: $issue_body"
 
-      - name: Update Parent Issues
-        run: |
-          set -e
+          # Extract parent IDs from the 'Parents:' line
+          parents_line=$(echo "$issue_body" | grep -i 'Parents:')
+          echo "Parents line: $parents_line"
 
-          ISSUE_NUMBER="${{ github.event.issue.number }}"
-          REPO="${{ github.repository }}"
+          parent_ids=$(echo "$parents_line" | grep -oP '#\d+' | tr -d '#')
+          echo "Parent IDs: $parent_ids"
 
-          echo "Fetching issue body for issue #$ISSUE_NUMBER"
-          BODY=$(gh issue view "$ISSUE_NUMBER" --json body -q .body)
-          echo "Issue body: $BODY"
+          # Function to fetch issue body and comment count
+          fetch_issue_details() {
+            gh issue view "$1" --json body,comments --jq '{body: .body, comments: .comments.totalCount}'
+          }
 
-          echo "Extracting parent issues"
-          PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parents:\s*#[0-9, ]+')
-          echo "Parents line: $PARENTS_LINE"
+          # Function to update parent issue
+          update_parent_issue() {
+            local parent_id="$1"
+            local updated_description="$2"
+            gh issue edit "$parent_id" --body "$updated_description"
+          }
 
-          if [ -z "$PARENTS_LINE" ]; then
-            echo "No Parents found for #$ISSUE_NUMBER, exiting."
-            exit 0
-          fi
-
-          PARENT_IDS=$(echo "$PARENTS_LINE" | grep -oP '#\d+' | grep -oP '\d+')
-          echo "Parent IDs: $PARENT_IDS"
-
-          for PARENT_ID in $PARENT_IDS; do
-            echo "Processing parent #$PARENT_ID"
-
-            PARENT_DESCRIPTION=$(gh issue view "$PARENT_ID" --json body -q .body)
-            echo "Parent issue description: $PARENT_DESCRIPTION"
-
-            # Clear out old Children list if it exists
-            UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed '/^Children:/,/^$/d')
-            echo "Updated description after clearing Children: $UPDATED_DESCRIPTION"
-
-            # Fetch all child issues related to the current parent, including comment count
-            CHILD_ISSUES=$(gh issue list --repo "$REPO" --json number,body,comments | jq --arg parent_id "#$PARENT_ID" '
-              .[] | select(.body | contains($parent_id)) | {
-                number: .number,
-                comments: .comments
-              }
-            ')
-            echo "Raw child issues: $CHILD_ISSUES"
-
-            if [ -z "$CHILD_ISSUES" ] || [ "$CHILD_ISSUES" = "[]" ]; then
-              echo "No child issues found for parent #$PARENT_ID."
-              continue
-            fi
-
-            # Sort child issues by the number of comments in descending order and select the top 5
-            CHILD_ISSUES_TOP5=$(echo "$CHILD_ISSUES" | jq -s 'sort_by(-.comments) | .[:5] | map("#" + (.number | tostring)) | join(", ")')
-            CHILDREN_LINE="Child Issues: $CHILD_ISSUES_TOP5"
+          # Function to build the child issues array
+          build_child_array() {
+            local issues=("$@")
+            local child_array="### Children (Top 5 Most Busiest Issues):"
             
-            echo "Formatted children line: $CHILDREN_LINE"
+            for issue in "${issues[@]}"; do
+              local id=$(echo "$issue" | jq -r '.id')
+              local count=$(echo "$issue" | jq -r '.comments')
+              child_array+="\n- Issue #$id with $count comments"
+            done
+            
+            echo -e "$child_array"
+          }
 
-            # Combine children line with updated description
-            FINAL_DESCRIPTION=$(echo -e "$CHILDREN_LINE\n\n$UPDATED_DESCRIPTION")
-            echo "Final description: $FINAL_DESCRIPTION"
+          # Process each parent issue
+          for parent_id in $parent_ids; do
+            echo "Processing parent #$parent_id"
 
-            # Verify if the final description is not empty
-            if [ -z "$FINAL_DESCRIPTION" ]; then
-              echo "Error: Final description is empty. Skipping update for parent #$PARENT_ID."
-              continue
-            fi
+            # Fetch the current parent issue description
+            parent_issue_description=$(fetch_issue_details "$parent_id" | jq -r '.body')
+            echo "Parent issue description: $parent_issue_description"
 
-            # Update the parent issue with the new description
-            UPDATE_RESULT=$(gh issue edit "$PARENT_ID" --body "$FINAL_DESCRIPTION" 2>&1)
-            echo "Update command result: $UPDATE_RESULT"
+            # Clear existing 'Children:' section
+            updated_description=$(echo "$parent_issue_description" | sed '/Children:/d')
+            echo "Updated description after clearing Children: $updated_description"
 
-            if [[ "$UPDATE_RESULT" == *"error"* ]]; then
-              echo "Failed to update parent issue #$PARENT_ID with error: $UPDATE_RESULT"
-            else
-              echo "Successfully updated parent issue #$PARENT_ID"
-            fi
+            # Fetch details of all child issues linked to the parent
+            child_issues=()
+            for child in $(echo "$issue_body" | grep -oP '#\d+' | tr -d '#'); do
+              details=$(fetch_issue_details "$child" | jq -c --arg id "$child" '{id: $id, comments: .comments}')
+              child_issues+=("$details")
+            done
+
+            # Sort the child issues by comment count in descending order and pick the top 5
+            sorted_issues=$(printf "%s\n" "${child_issues[@]}" | jq -s 'sort_by(-.comments)[:5]')
+
+            # Build the updated Children array for the parent description
+            children_array=$(build_child_array "${sorted_issues[@]}")
+            echo "Children array: $children_array"
+
+            # Append the children array to the updated description
+            updated_description+="\n\n$children_array"
+
+            # Update the parent issue description
+            update_parent_issue "$parent_id" "$updated_description"
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
