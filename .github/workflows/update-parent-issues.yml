@@ -76,10 +76,10 @@ jobs:
             # Append the current child issue number to the Child line
             if echo "$PARENT_DESCRIPTION" | grep -q "Child:"; then
               # Add the child issue number to the existing Child line
-              UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed "s/Child:/Child: $CHILD_TAG,/")
+              UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed "s/Child:/& $CHILD_TAG,/")
             else
-              # Add a new Child line
-              UPDATED_DESCRIPTION="Child: $CHILD_TAG\n\n$PARENT_DESCRIPTION"
+              # Add a new Child line at the beginning of the description
+              UPDATED_DESCRIPTION="Child: $CHILD_TAG\n$PARENT_DESCRIPTION"
             fi
 
             echo "Updated parent description: $UPDATED_DESCRIPTION"
