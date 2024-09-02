@@ -1,3 +1,5 @@
+name: Update Parent Issues on Comment
+
 on:
   issue_comment:
     types: [created]
@@ -88,4 +90,4 @@ jobs:
             gh issue edit $PARENT_ID --body "$FINAL_DESCRIPTION"
           done
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
