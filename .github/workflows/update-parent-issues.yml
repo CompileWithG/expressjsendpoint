@@ -91,20 +91,8 @@ jobs:
             PARENT_DESCRIPTION=$(gh issue view "$PARENT_ID" --json body -q .body)
             echo "Current parent description: $PARENT_DESCRIPTION"
 
-            # Handle empty description cases
-            if [ -z "$PARENT_DESCRIPTION" ]; then
-              PARENT_DESCRIPTION=" "
-            fi
-
-            UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed '/^Child:/d')
-            FINAL_DESCRIPTION=$(echo -e "Child: $BUSIEST_CHILDREN\n$UPDATED_DESCRIPTION")
-
-            echo "Final parent description: $FINAL_DESCRIPTION"
-
-            # Update the parent issue with the new description
-            gh issue edit "$PARENT_ID" --body "$FINAL_DESCRIPTION"
-          done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            # Ensure we only add the line if it doesn't already exist
+            if echo "$PARENT_DESCRIPTION" | grep -q '^Child:'; then
+              UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION
 
 
