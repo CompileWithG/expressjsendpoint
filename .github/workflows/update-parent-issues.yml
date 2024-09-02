@@ -86,17 +86,17 @@ jobs:
             # Fetch the current description of the parent issue
             PARENT_DESCRIPTION=$(gh issue view "$PARENT_ID" --json body -q .body)
 
-            # Check if "Child:" line already exists
+            # Clean existing Child line or add if not present
             if echo "$PARENT_DESCRIPTION" | grep -q "Child:"; then
-              # Update existing Child line without adding literal \n
+              # Update existing Child line
               UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed -E "s/Child:.*$/Child: $BUSIEST_CHILDREN/")
             else
-              # Add new Child line at the top of the description
+              # Add new Child line if not already present
               UPDATED_DESCRIPTION="Child: $BUSIEST_CHILDREN\n$PARENT_DESCRIPTION"
             fi
 
-            # Remove any literal \n that may cause formatting issues
-            UPDATED_DESCRIPTION=$(echo "$UPDATED_DESCRIPTION" | sed ':a;N;$!ba;s/\n/ /g')
+            # Remove literal \n that may cause formatting issues
+            UPDATED_DESCRIPTION=$(echo "$UPDATED_DESCRIPTION" | sed 's/\\n//g')
 
             echo "Updated parent description: $UPDATED_DESCRIPTION"
 
@@ -105,5 +105,4 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 
