@@ -27,7 +27,7 @@ jobs:
           sudo apt-get install -y gh jq
 
       - name: Authenticate with GitHub CLI
-        run: gh auth login --with-token <<< ${{ secrets.GITHUB_TOKEN }}
+        run: gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Update Parent Issues
         run: |
@@ -37,12 +37,12 @@ jobs:
           REPO=${{ github.repository }}
 
           echo "Fetching issue body for issue #$ISSUE_NUMBER"
-          BODY=$(gh issue view $ISSUE_NUMBER --json body -q .body)
+          BODY=$(gh issue view "$ISSUE_NUMBER" --json body -q .body)
           echo "Issue body: $BODY"
 
           echo "Extracting parent issues"
           PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parents:\s*#[0-9, ]+')
-          
+
           if [ -z "$PARENTS_LINE" ]; then
             echo "No Parents found in the issue body for #$ISSUE_NUMBER, exiting."
             exit 1
@@ -50,7 +50,7 @@ jobs:
           
           echo "Parents line: $PARENTS_LINE"
 
-          # Extracting the parent IDs
+          # Extract parent IDs
           PARENT_IDS=$(echo "$PARENTS_LINE" | grep -oP '#\d+' | grep -oP '\d+')
           
           if [ -z "$PARENT_IDS" ]; then
@@ -63,30 +63,44 @@ jobs:
           for PARENT_ID in $PARENT_IDS; do
             echo "Processing parent #$PARENT_ID"
 
-            PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
-            echo "Parent issue description: $PARENT_DESCRIPTION"
+            # Fetch all child issues related to the current parent
+            CHILD_ISSUES=$(gh issue list --repo "$REPO" --json number,body,comments | jq --arg parent_id "#$PARENT_ID" '
+              .[] | select(.body | contains($parent_id)) | {
+                number: .number,
+                comments: .comments
+              }
+            ')
 
-            # Check if the child issue is already listed
-            CHILD_TAG="#$ISSUE_NUMBER"
-            if echo "$PARENT_DESCRIPTION" | grep -q "Child:.*$CHILD_TAG"; then
-              echo "Child issue #$ISSUE_NUMBER already listed in parent #$PARENT_ID, skipping."
+            if [ -z "$CHILD_ISSUES" ]; then
+              echo "No child issues found for parent #$PARENT_ID."
               continue
             fi
 
-            # Append the current child issue number to the Child line
+            echo "Raw child issues: $CHILD_ISSUES"
+
+            # Extract the top 5 busiest child issues based on comment count
+            BUSIEST_CHILDREN=$(echo "$CHILD_ISSUES" | jq -r 'sort_by(-.comments) | .[] | "#\(.number)"' | head -n 5 | paste -sd "," -)
+
+            echo "Busiest children: $BUSIEST_CHILDREN"
+
+            # Fetch the current description of the parent issue
+            PARENT_DESCRIPTION=$(gh issue view "$PARENT_ID" --json body -q .body)
+
+            # Update or create the "Child:" line
             if echo "$PARENT_DESCRIPTION" | grep -q "Child:"; then
-              # Add the child issue number to the existing Child line
-              UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed "s/Child:/& $CHILD_TAG,/")
+              # Update existing Child line
+              UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed -E "s/Child:.*$/Child: $BUSIEST_CHILDREN/")
             else
-              # Add a new Child line at the beginning of the description
-              UPDATED_DESCRIPTION="Child: $CHILD_TAG\n$PARENT_DESCRIPTION"
+              # Add new Child line at the top of the description
+              UPDATED_DESCRIPTION="Child: $BUSIEST_CHILDREN\n$PARENT_DESCRIPTION"
             fi
 
             echo "Updated parent description: $UPDATED_DESCRIPTION"
 
             # Update the parent issue with the new description
-            gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
+            gh issue edit "$PARENT_ID" --body "$UPDATED_DESCRIPTION"
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
