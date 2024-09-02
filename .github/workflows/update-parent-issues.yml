@@ -62,30 +62,13 @@ jobs:
             UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed '/^Children:/,/^$/d')
             echo "Updated description after clearing Children: $UPDATED_DESCRIPTION"
 
-            # Fetch all child issues related to the current parent
-            CHILD_ISSUES=$(gh issue list --repo $REPO --json number,body | jq --arg parent_id "#$PARENT_ID" '
-              .[] | select(.body | contains($parent_id)) | .number
+            # Fetch all child issues related to the current parent, including comment count
+            CHILD_ISSUES=$(gh issue list --repo $REPO --json number,body,comments | jq --arg parent_id "#$PARENT_ID" '
+              .[] | select(.body | contains($parent_id)) | {
+                number: .number,
+                comments: .comments
+              }
             ')
             echo "Raw child issues: $CHILD_ISSUES"
 
-            if [ -z "$CHILD_ISSUES" ]; then
-              echo "No child issues found for parent #$PARENT_ID."
-              continue
-            fi
-
-            # Convert CHILD_ISSUES into a proper JSON array for sorting
-            CHILD_ISSUES_ARRAY=$(echo "$CHILD_ISSUES" | jq -s 'sort | map("#" + tostring) | join(", ")')
-            CHILDREN_LINE="Child Issues: $CHILD_ISSUES_ARRAY"
-            
-            echo "Formatted children line: $CHILDREN_LINE"
-
-            # Combine children line with updated description
-            FINAL_DESCRIPTION=$(echo -e "$CHILDREN_LINE\n\n$UPDATED_DESCRIPTION")
-            echo "Final description: $FINAL_DESCRIPTION"
-
-            # Update the parent issue with the new description
-            gh issue edit $PARENT_ID --body "$FINAL_DESCRIPTION"
-          done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+            if [ -z "$CHILD
