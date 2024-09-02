@@ -41,7 +41,6 @@ jobs:
           echo "Issue body: $BODY"
 
           echo "Extracting parent issues"
-          # Adjusting the regular expression to correctly match "Parents:#<numbers>"
           PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parents:\s*#[0-9, ]+')
           
           if [ -z "$PARENTS_LINE" ]; then
@@ -67,33 +66,27 @@ jobs:
             PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
             echo "Parent issue description: $PARENT_DESCRIPTION"
 
-            # Fetch all child issues related to the current parent
-            CHILD_ISSUES=$(gh issue list --repo $REPO --json number,body,comments | jq --arg parent_id "#$PARENT_ID" '
-              .[] | select(.body | contains("Parents: " + $parent_id)) | {
-                number: .number,
-                comments: .comments
-              }
-            ')
-            echo "Raw child issues: $CHILD_ISSUES"
-
-            if [ -z "$CHILD_ISSUES" ]; then
-              echo "No child issues found for parent #$PARENT_ID."
+            # Check if the child issue is already listed
+            CHILD_TAG="#$ISSUE_NUMBER"
+            if echo "$PARENT_DESCRIPTION" | grep -q "Child:.*$CHILD_TAG"; then
+              echo "Child issue #$ISSUE_NUMBER already listed in parent #$PARENT_ID, skipping."
               continue
             fi
 
-            # Extract the top 5 most commented (busiest) child issues
-            BUSIEST_CHILDREN=$(echo "$CHILD_ISSUES" | jq -r '
-              sort_by(-.comments) | .[] | "#\(.number)"
-            ' | head -n 5 | tr '\n' ',' | sed 's/,$//')
-            
-            echo "Busiest child issues: $BUSIEST_CHILDREN"
+            # Append the current child issue number to the Child line
+            if echo "$PARENT_DESCRIPTION" | grep -q "Child:"; then
+              # Add the child issue number to the existing Child line
+              UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed "s/Child:/Child: $CHILD_TAG,/")
+            else
+              # Add a new Child line
+              UPDATED_DESCRIPTION="Child: $CHILD_TAG\n\n$PARENT_DESCRIPTION"
+            fi
 
-            # Update the parent issue description with the new line "Child: #4, #3, ..."
-            FINAL_DESCRIPTION=$(echo -e "Child: $BUSIEST_CHILDREN\n\n$PARENT_DESCRIPTION")
-            echo "Final description: $FINAL_DESCRIPTION"
+            echo "Updated parent description: $UPDATED_DESCRIPTION"
 
             # Update the parent issue with the new description
-            gh issue edit $PARENT_ID --body "$FINAL_DESCRIPTION"
+            gh issue edit $PARENT_ID --body "$UPDATED_DESCRIPTION"
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
