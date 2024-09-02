@@ -1,83 +1,95 @@
-name: Update Parent Issues
+name: Update Parent Issues on Comment
 
 on:
   issue_comment:
     types: [created]
 
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+
 jobs:
   update-parent-issues:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Configure GitHub CLI
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
 
-      - name: Fetch issue details and update parent issues
+      - name: Install GitHub CLI and jq
         run: |
-          # Get issue number from event payload
-          issue_number=$(jq -r .issue.number "$GITHUB_EVENT_PATH")
+          sudo apt-get update
+          sudo apt-get install -y gh jq
 
-          # Fetch issue body for the triggered issue
-          issue_body=$(gh issue view "$issue_number" --json body --jq '.body')
-          echo "Issue body: $issue_body"
+      - name: Authenticate with GitHub CLI
+        run: gh auth login --with-token <<< ${{ secrets.GITHUB_TOKEN }}
 
-          # Extract parent IDs from the 'Parents:' line
-          parents_line=$(echo "$issue_body" | grep -i 'Parents:')
-          echo "Parents line: $parents_line"
+      - name: Update Parent Issues
+        run: |
+          set -e
 
-          parent_ids=$(echo "$parents_line" | grep -oP '#\d+' | tr -d '#')
-          echo "Parent IDs: $parent_ids"
+          ISSUE_NUMBER=${{ github.event.issue.number }}
+          REPO=${{ github.repository }}
 
-          # Function to fetch issue body and comment count
-          fetch_issue_details() {
-            gh issue view "$1" --json body,comments --jq '{body: .body, comments: .comments.totalCount}'
-          }
+          echo "Fetching issue body for issue #$ISSUE_NUMBER"
+          BODY=$(gh issue view $ISSUE_NUMBER --json body -q .body)
+          echo "Issue body: $BODY"
 
-          # Function to update parent issue
-          update_parent_issue() {
-            local parent_id="$1"
-            local updated_description="$2"
-            gh issue edit "$parent_id" --body "$updated_description"
-          }
+          echo "Extracting parent issues"
+          PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parents:\s*#[0-9, ]+')
+          echo "Parents line: $PARENTS_LINE"
 
-          # Function to build the child issues array
-          build_child_array() {
-            local issues=("$@")
-            local child_array="### Children (Top 5 Most Busiest Issues):"
-            
-            for issue in "${issues[@]}"; do
-              local id=$(echo "$issue" | jq -r '.id')
-              local count=$(echo "$issue" | jq -r '.comments')
-              child_array+="\n- Issue #$id with $count comments"
-            done
-            
-            echo -e "$child_array"
-          }
+          if [ -z "$PARENTS_LINE" ]; then
+            echo "No Parents found for #$ISSUE_NUMBER, exiting."
+            exit 0
+          fi
 
-          # Process each parent issue
-          for parent_id in $parent_ids; do
-            echo "Processing parent #$parent_id"
+          PARENT_IDS=$(echo "$PARENTS_LINE" | grep -oP '#\d+' | grep -oP '\d+')
+          echo "Parent IDs: $PARENT_IDS"
 
-            # Fetch the current parent issue description
-            parent_issue_description=$(fetch_issue_details "$parent_id" | jq -r '.body')
-            echo "Parent issue description: $parent_issue_description"
+          for PARENT_ID in $PARENT_IDS; do
+            echo "Processing parent #$PARENT_ID"
 
-            # Clear existing 'Children:' section
-            updated_description=$(echo "$parent_issue_description" | sed '/Children:/d')
-            echo "Updated description after clearing Children: $updated_description"
+            PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
+            echo "Parent issue description: $PARENT_DESCRIPTION"
 
-            # Fetch details of all child issues linked to the parent
-            child_issues=()
-            for child in $(echo "$issue_body" | grep -oP '#\d+' | tr -d '#'); do
-              details=$(fetch_issue_details "$child" | jq -c --arg id "$child" '{id: $id, comments: .comments}')
-              child_issues+=("$details")
-            done
+            # Clear out old Children list if it exists
+            UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed '/^Children:/,/^$/d')
+            echo "Updated description after clearing Children: $UPDATED_DESCRIPTION"
 
-            # Sort the child issues by comment count in descending order and pick the top 5
-            sorted_issues=$(printf "%s\n" "${child_issues[@]}" | jq -s 'sort_by(-.comments)[:5]')
+            # Fetch all child issues related to the current parent
+            CHILD_ISSUES=$(gh issue list --repo $REPO --json number,title,comments --jq '
+              .[] | select(.body | contains("Parents:#'"$PARENT_ID"'")) | {
+                number: .number,
+                title: .title,
+                comments: .comments
+              }
+            ')
+            echo "Raw child issues: $CHILD_ISSUES"
 
-            # Build the updated Children array for the
+            if [ -z "$CHILD_ISSUES" ]; then
+              echo "No child issues found for parent #$PARENT_ID."
+              continue
+            fi
+
+            # Sort child issues by comment count and pick top 5
+            CHILDREN_LIST=$(echo "$CHILD_ISSUES" | jq -r '
+              sort_by(-.comments) | .[] | "- [" + .title + "](https://github.com/'$REPO'/issues/" + (.number|tostring) + ")"
+            ' | head -n 5 | tr '\n' '\n')
+
+            echo "Formatted children list: $CHILDREN_LIST"
+
+            FINAL_DESCRIPTION=$(echo -e "Children:\n$CHILDREN_LIST\n\n$UPDATED_DESCRIPTION")
+            echo "Final description: $FINAL_DESCRIPTION"
+
+            # Update the parent issue with the new description
+            gh issue edit $PARENT_ID --body "$FINAL_DESCRIPTION"
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
