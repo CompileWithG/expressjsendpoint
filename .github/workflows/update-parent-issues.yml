@@ -41,11 +41,11 @@ jobs:
           echo "Issue body: $BODY"
 
           echo "Extracting parent issues"
-          PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parents:\s*#[0-9, ]+')
+          PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parent:\s*#[0-9, ]+')
           echo "Parents line: $PARENTS_LINE"
 
           if [ -z "$PARENTS_LINE" ]; then
-            echo "No Parents found for #$ISSUE_NUMBER, exiting."
+            echo "No Parent found for #$ISSUE_NUMBER, exiting."
             exit 0
           fi
 
@@ -58,15 +58,11 @@ jobs:
             PARENT_DESCRIPTION=$(gh issue view $PARENT_ID --json body -q .body)
             echo "Parent issue description: $PARENT_DESCRIPTION"
 
-            # Clear out old Children list if it exists
-            UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed '/^Children:/,/^$/d')
-            echo "Updated description after clearing Children: $UPDATED_DESCRIPTION"
-
             # Fetch all child issues related to the current parent
-            CHILD_ISSUES=$(gh issue list --repo $REPO --json number,title,body | jq --arg parent_id "#$PARENT_ID" '
-              .[] | select(.body | contains($parent_id)) | {
+            CHILD_ISSUES=$(gh issue list --repo $REPO --json number,body,comments | jq --arg parent_id "#$PARENT_ID" '
+              .[] | select(.body | contains("Parent: " + $parent_id)) | {
                 number: .number,
-                title: .title
+                comments: .comments
               }
             ')
             echo "Raw child issues: $CHILD_ISSUES"
@@ -76,14 +72,15 @@ jobs:
               continue
             fi
 
-            # Format child issues into a markdown list
-            CHILDREN_LIST=$(echo "$CHILD_ISSUES" | jq -r '
-              sort_by(-.number) | .[] | "- [" + .title + "](https://github.com/'$REPO'/issues/" + (.number|tostring) + ")"
-            ' | head -n 5 | tr '\n' '\n')
+            # Extract top 5 most commented (busiest) child issues
+            BUSIEST_CHILDREN=$(echo "$CHILD_ISSUES" | jq -r '
+              sort_by(-.comments) | .[] | "#\(.number)"
+            ' | head -n 5 | tr '\n' ',' | sed 's/,$//')
             
-            echo "Formatted children list: $CHILDREN_LIST"
+            echo "Busiest child issues: $BUSIEST_CHILDREN"
 
-            FINAL_DESCRIPTION=$(echo -e "Children:\n$CHILDREN_LIST\n\n$UPDATED_DESCRIPTION")
+            # Update the parent issue description with the new line "Child: #4, #3, ..."
+            FINAL_DESCRIPTION=$(echo -e "Child: $BUSIEST_CHILDREN\n\n$PARENT_DESCRIPTION")
             echo "Final description: $FINAL_DESCRIPTION"
 
             # Update the parent issue with the new description
@@ -91,3 +88,4 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
