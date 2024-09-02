@@ -47,12 +47,12 @@ jobs:
             echo "No Parents found in the issue body for #$ISSUE_NUMBER, exiting."
             exit 1
           fi
-          
+
           echo "Parents line: $PARENTS_LINE"
 
           # Extract parent IDs
           PARENT_IDS=$(echo "$PARENTS_LINE" | grep -oP '#\d+' | grep -oP '\d+')
-          
+
           if [ -z "$PARENT_IDS" ]; then
             echo "No valid parent IDs found in the line: $PARENTS_LINE"
             exit 1
@@ -86,14 +86,17 @@ jobs:
             # Fetch the current description of the parent issue
             PARENT_DESCRIPTION=$(gh issue view "$PARENT_ID" --json body -q .body)
 
-            # Update or create the "Child:" line
+            # Check if "Child:" line already exists
             if echo "$PARENT_DESCRIPTION" | grep -q "Child:"; then
-              # Update existing Child line
+              # Update existing Child line without adding literal \n
               UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed -E "s/Child:.*$/Child: $BUSIEST_CHILDREN/")
             else
               # Add new Child line at the top of the description
               UPDATED_DESCRIPTION="Child: $BUSIEST_CHILDREN\n$PARENT_DESCRIPTION"
             fi
+
+            # Remove any literal \n that may cause formatting issues
+            UPDATED_DESCRIPTION=$(echo "$UPDATED_DESCRIPTION" | sed ':a;N;$!ba;s/\n/ /g')
 
             echo "Updated parent description: $UPDATED_DESCRIPTION"
 
