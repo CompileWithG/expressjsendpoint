@@ -63,13 +63,14 @@ jobs:
             echo "Updated description after clearing Children: $UPDATED_DESCRIPTION"
 
             # Fetch all child issues related to the current parent
-            CHILD_ISSUES=$(gh issue list --repo $REPO --json number,title,comments --jq '
+            CHILD_ISSUES=$(gh issue list --repo $REPO --json number,title,comments,body --jq '
               .[] | select(.body | contains("Parents:#'"$PARENT_ID"'")) | {
                 number: .number,
                 title: .title,
                 comments: .comments
               }
             ')
+            
             echo "Raw child issues: $CHILD_ISSUES"
 
             if [ -z "$CHILD_ISSUES" ]; then
@@ -92,4 +93,3 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
