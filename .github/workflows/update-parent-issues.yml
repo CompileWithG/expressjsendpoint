@@ -63,8 +63,8 @@ jobs:
             echo "Processing parent #$PARENT_ID"
 
             echo "Fetching child issues for parent #$PARENT_ID"
-            CHILD_ISSUES=$(gh issue list --repo "$REPO" --json number,body,comments | jq --arg parent_id "#$PARENT_ID" '
-              .[] | select(.body | contains($parent_id)) | {
+            CHILD_ISSUES=$(gh issue list --repo "$REPO" --json number,body,comments --jq '
+              .[] | select(.body | contains("Parents:#'$PARENT_ID'")) | {
                 number: .number,
                 comments: .comments
               }
@@ -104,8 +104,9 @@ jobs:
 
             # Update the parent issue with the new description
             gh issue edit "$PARENT_ID" --body "$FINAL_DESCRIPTION"
+
+            echo "Updated parent issue #$PARENT_ID"
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 
