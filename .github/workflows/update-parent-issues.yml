@@ -44,4 +44,64 @@ jobs:
           PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parents:\s*#[0-9, ]+')
           echo "Parents line: $PARENTS_LINE"
 
+          if [ -z "$PARENTS_LINE" ]; then
+            echo "No Parents found for #$ISSUE_NUMBER, exiting."
+            exit 0
+          fi
+
+          PARENT_IDS=$(echo "$PARENTS_LINE" | grep -oP '#\d+' | grep -oP '\d+')
+          echo "Parent IDs: $PARENT_IDS"
+
+          for PARENT_ID in $PARENT_IDS; do
+            echo "Processing parent #$PARENT_ID"
+
+            PARENT_DESCRIPTION=$(gh issue view "$PARENT_ID" --json body -q .body)
+            echo "Parent issue description: $PARENT_DESCRIPTION"
+
+            # Clear out old Children list if it exists
+            UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed '/^Children:/,/^$/d')
+            echo "Updated description after clearing Children: $UPDATED_DESCRIPTION"
+
+            # Fetch all child issues related to the current parent, including comment count
+            CHILD_ISSUES=$(gh issue list --repo "$REPO" --json number,body,comments | jq --arg parent_id "#$PARENT_ID" '
+              .[] | select(.body | contains($parent_id)) | {
+                number: .number,
+                comments: .comments
+              }
+            ')
+            echo "Raw child issues: $CHILD_ISSUES"
+
+            if [ -z "$CHILD_ISSUES" ] || [ "$CHILD_ISSUES" = "[]" ]; then
+              echo "No child issues found for parent #$PARENT_ID."
+              continue
+            fi
+
+            # Sort child issues by the number of comments in descending order and select the top 5
+            CHILD_ISSUES_TOP5=$(echo "$CHILD_ISSUES" | jq -s 'sort_by(-.comments) | .[:5] | map("#" + (.number | tostring)) | join(", ")')
+            CHILDREN_LINE="Child Issues: $CHILD_ISSUES_TOP5"
+            
+            echo "Formatted children line: $CHILDREN_LINE"
+
+            # Combine children line with updated description
+            FINAL_DESCRIPTION=$(echo -e "$CHILDREN_LINE\n\n$UPDATED_DESCRIPTION")
+            echo "Final description: $FINAL_DESCRIPTION"
+
+            # Verify if the final description is not empty
+            if [ -z "$FINAL_DESCRIPTION" ]; then
+              echo "Error: Final description is empty. Skipping update for parent #$PARENT_ID."
+              continue
+            fi
+
+            # Update the parent issue with the new description
+            UPDATE_RESULT=$(gh issue edit "$PARENT_ID" --body "$FINAL_DESCRIPTION" 2>&1)
+            echo "Update command result: $UPDATE_RESULT"
+
+            if [[ "$UPDATE_RESULT" == *"error"* ]]; then
+              echo "Failed to update parent issue #$PARENT_ID with error: $UPDATE_RESULT"
+            else
+              echo "Successfully updated parent issue #$PARENT_ID"
+            fi
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
