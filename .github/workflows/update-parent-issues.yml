@@ -36,11 +36,10 @@ jobs:
           ISSUE_NUMBER=${{ github.event.issue.number }}
           REPO=${{ github.repository }}
 
-          echo "Fetching issue body for issue #$ISSUE_NUMBER"
+          # Fetch issue body for issue #$ISSUE_NUMBER
           BODY=$(gh issue view "$ISSUE_NUMBER" --json body -q .body)
-          echo "Issue body: $BODY"
 
-          echo "Extracting parent issues"
+          # Extract parent issues
           PARENTS_LINE=$(echo "$BODY" | grep -oP 'Parents:\s*#[0-9, ]+')
 
           if [ -z "$PARENTS_LINE" ]; then
@@ -48,16 +47,13 @@ jobs:
             exit 0
           fi
 
-          echo "Parents line: $PARENTS_LINE"
-
+          # Extract parent IDs
           PARENT_IDS=$(echo "$PARENTS_LINE" | grep -oP '#\d+' | grep -oP '\d+')
 
           if [ -z "$PARENT_IDS" ]; then
             echo "No valid parent IDs found."
             exit 0
           fi
-
-          echo "Parent IDs: $PARENT_IDS"
 
           for PARENT_ID in $PARENT_IDS; do
             echo "Processing parent #$PARENT_ID"
@@ -75,8 +71,6 @@ jobs:
               continue
             fi
 
-            echo "Raw child issues: $CHILD_ISSUES"
-
             # Extract top 5 most active child issues
             BUSIEST_CHILDREN=$(echo "$CHILD_ISSUES" | jq -r '
               sort_by(-.comments) | .[:5] | .[] | "#\(.number)"
@@ -87,11 +81,8 @@ jobs:
               continue
             fi
 
-            echo "Busiest children: $BUSIEST_CHILDREN"
-
             # Fetch the current parent issue description
             PARENT_DESCRIPTION=$(gh issue view "$PARENT_ID" --json body -q .body)
-            echo "Current parent description: $PARENT_DESCRIPTION"
 
             # Prepare updated description
             if echo "$PARENT_DESCRIPTION" | grep -q '^Child:'; then
@@ -102,13 +93,10 @@ jobs:
 
             FINAL_DESCRIPTION=$(echo -e "Child: $BUSIEST_CHILDREN\n$UPDATED_DESCRIPTION")
 
-            echo "Final parent description: $FINAL_DESCRIPTION"
-
             # Update the parent issue with the new description
             gh issue edit "$PARENT_ID" --body "$FINAL_DESCRIPTION"
 
             echo "Updated parent issue #$PARENT_ID"
           done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
