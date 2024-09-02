@@ -50,7 +50,6 @@ jobs:
 
           echo "Parents line: $PARENTS_LINE"
 
-          # Extract parent IDs
           PARENT_IDS=$(echo "$PARENTS_LINE" | grep -oP '#\d+' | grep -oP '\d+')
 
           if [ -z "$PARENT_IDS" ]; then
@@ -63,7 +62,7 @@ jobs:
           for PARENT_ID in $PARENT_IDS; do
             echo "Processing parent #$PARENT_ID"
 
-            # Fetch all child issues related to the current parent
+            echo "Fetching child issues for parent #$PARENT_ID"
             CHILD_ISSUES=$(gh issue list --repo "$REPO" --json number,body,comments | jq --arg parent_id "#$PARENT_ID" '
               .[] | select(.body | contains($parent_id)) | {
                 number: .number,
@@ -78,7 +77,6 @@ jobs:
 
             echo "Raw child issues: $CHILD_ISSUES"
 
-            # Extract the top 5 busiest child issues based on comment count
             BUSIEST_CHILDREN=$(echo "$CHILD_ISSUES" | jq -r '
               sort_by(-.comments) | .[:5] | .[] | "#\(.number)"
             ' | paste -sd "," -)
@@ -90,14 +88,15 @@ jobs:
 
             echo "Busiest children: $BUSIEST_CHILDREN"
 
-            # Fetch the current description of the parent issue
             PARENT_DESCRIPTION=$(gh issue view "$PARENT_ID" --json body -q .body)
             echo "Current parent description: $PARENT_DESCRIPTION"
 
-            # Remove any existing Child line from the description
-            UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed '/^Child:/d')
+            # Handle empty description cases
+            if [ -z "$PARENT_DESCRIPTION" ]; then
+              PARENT_DESCRIPTION=" "
+            fi
 
-            # Always add the Child line, even if description is empty
+            UPDATED_DESCRIPTION=$(echo "$PARENT_DESCRIPTION" | sed '/^Child:/d')
             FINAL_DESCRIPTION=$(echo -e "Child: $BUSIEST_CHILDREN\n$UPDATED_DESCRIPTION")
 
             echo "Final parent description: $FINAL_DESCRIPTION"
@@ -107,6 +106,5 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 
 
