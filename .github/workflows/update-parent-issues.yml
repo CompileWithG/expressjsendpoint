@@ -79,7 +79,7 @@ jobs:
             echo "Raw child issues: $CHILD_ISSUES"
 
             # Extract the top 5 busiest child issues based on comment count
-            BUSIEST_CHILDREN=$(echo "$CHILD_ISSUES" | jq -r 'sort_by(-.comments) | .[] | "#\(.number)"' | head -n 5 | paste -sd "," -)
+            BUSIEST_CHILDREN=$(echo "$CHILD_ISSUES" | jq -r 'sort_by(-.comments) | .[:5] | .[] | "#\(.number)"' | paste -sd "," -)
 
             echo "Busiest children: $BUSIEST_CHILDREN"
 
